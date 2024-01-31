@@ -1,0 +1,69 @@
+Last Purchased Date =
+MAXX(
+  RELATEDTABLE('Internet Sales'),
+  'Internet Sales'[Order Date]) // Add column to get the Max date per row
+
+Total Transactions =
+COUNTROWS(
+  RELATEDTABLE('Internet Sales')) // Count the rows per criteria
+
+Calculate previous month or days = 
+CALCULATE(
+    [Measure],
+    DATEADD(
+        'Calendar'[Date],-1,MONTH))
+
+Analysis = 
+IF(
+    [Measure]-[Previous Measure]>0,"🔼 higher than previous month",
+    "🔽 lower than previous month")
+
+_Billable HC = IFERROR([_Total Final Billable Hrs]/[_Billable Hrs],BLANK())
+
+Selected Billable HC = 
+VAR SelectedDate = SELECTEDVALUE(jomtable[Beginning of Date])
+    RETURN CALCULATE([_Billable HC],EOMONTH('Billable Hrs'[Billable Beginning of Date],0)=EOMONTH(SelectedDate,0))
+
+Selected Billable HC.Prev = 
+VAR SelectedDate = SELECTEDVALUE(jomtable[Beginning of Date])
+    RETURN CALCULATE([_Billable HC],EOMONTH('Billable Hrs'[Billable Beginning of Date],0)=EOMONTH(SelectedDate,-1))
+
+4Month Billable HC = 
+VAR SelectedDate = SELECTEDVALUE(jomtable[Beginning of Date])
+VAR CurrentDate = SELECTEDVALUE('Billable Hrs'[Billable Beginning of Date])
+    RETURN IF(EOMONTH(CurrentDate,0) < EOMONTH(SelectedDate,0) &&
+           EOMONTH(CurrentDate,0) >  EOMONTH(SelectedDate,-5),
+           [_Billable HC], BLANK())
+
+_KC Audit PR% = SUMX(VALUES(KC[EID2]), IF(CALCULATE(AVERAGE(KC[Pass Rate])) >= .7, 1, 0))/
+            SUMX(VALUES(KC[EID2]), IF(CALCULATE(AVERAGE(KC[Pass Rate])) >= 0, 1, 0))
+
+_KC Target Color = var V = [_KC Score]
+return IF(V>[_KC Target],"#46d00e",
+            IF(V=[_KC Target],"#46d00e",
+                IF(V<[_KC Target],"#e52b2b")))
+
+let
+    Source = List.Dates(StartDate, CountofDays, #duration(1, 0, 0, 0)),
+    #"Converted to Table" = Table.FromList(Source, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+    #"Renamed Columns" = Table.RenameColumns(#"Converted to Table",{{"Column1", "Date"}}),
+    #"Changed Type" = Table.TransformColumnTypes(#"Renamed Columns",{{"Date", type date}}),
+    StartDate = #date(2021, 6, 1),
+    DateToday = DateTime.Date(DateTime.LocalNow()),
+    CountofDays = Duration.Days (DateToday - StartDate),
+    Custom1 = #"Changed Type",
+    #"Inserted Month" = Table.AddColumn(Custom1, "Month", each Date.Month([Date]), Int64.Type),
+    #"Inserted Day of Week" = Table.AddColumn(#"Inserted Month", "Day of Week", each Date.DayOfWeek([Date]), Int64.Type),
+    #"Inserted Day Name" = Table.AddColumn(#"Inserted Day of Week", "Day Name", each Date.DayOfWeekName([Date]), type text),
+    #"Inserted Days in Month" = Table.AddColumn(#"Inserted Day Name", "Days in Month", each Date.DaysInMonth([Date]), Int64.Type),
+    #"Inserted End of Month" = Table.AddColumn(#"Inserted Days in Month", "End of Month", each Date.EndOfMonth([Date]), type date),
+    #"Inserted Start of Week" = Table.AddColumn(#"Inserted End of Month", "Start of Week", each Date.StartOfWeek([Date],Day.Sunday)),
+    #"Inserted Year" = Table.AddColumn(#"Inserted Start of Week", "Year", each Date.Year([Date]), Int64.Type),
+    #"Split Column by Position" = Table.SplitColumn(#"Inserted Year", "Day Name", Splitter.SplitTextByPositions({0, 3}, false), {"Day Name.1", "Day Name.2"}),
+    #"Changed Type1" = Table.TransformColumnTypes(#"Split Column by Position",{{"Day Name.1", type text}, {"Day Name.2", type text}}),
+    #"Removed Columns" = Table.RemoveColumns(#"Changed Type1",{"Day Name.2"}),
+    #"Renamed Columns1" = Table.RenameColumns(#"Removed Columns",{{"Day Name.1", "Day of the Week"}}),
+    #"Added Custom" = Table.AddColumn(#"Renamed Columns1", "Day of Week Sort", each Number.ToText([Day of Week]) & "-" & [Day of the Week]),
+    #"Filtered Rows" = Table.SelectRows(#"Added Custom", each [Date] > #date(2021, 12, 31))
+in
+    #"Filtered Rows"
